@@ -6,18 +6,30 @@ import { createClient } from "@supabase/supabase-js";
 import axios from "axios";
 
 // Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+let supabase: any;
+function getSupabaseClient() {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
 
 // Initialize Mistral LLM
-const mistral = new ChatMistralAI({
-  apiKey: process.env.MISTRAL_API_KEY,
-  modelName: "mistral-large-latest",
-  temperature: 0.3,
-  maxTokens: 2048,
-});
+let mistral: any;
+function getMistralClient() {
+  if (!mistral) {
+    mistral = new ChatMistralAI({
+      apiKey: process.env.MISTRAL_API_KEY,
+      modelName: "mistral-large-latest",
+      temperature: 0.3,
+      maxTokens: 2048,
+    });
+  }
+  return mistral;
+}
 
 /**
  * Medical Query Classification
@@ -42,7 +54,7 @@ Format: CATEGORY|confidence_score
 
   const chain = RunnableSequence.from([
     classificationPrompt,
-    mistral,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -147,7 +159,7 @@ Format as structured JSON with confidence scores for each diagnosis.
 
   const chain = RunnableSequence.from([
     diagnosisPrompt,
-    mistral,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -192,7 +204,7 @@ Format as structured JSON.
 
   const chain = RunnableSequence.from([
     treatmentPrompt,
-    mistral,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -326,6 +338,7 @@ export async function saveQueryToDatabase(
   classification: any
 ) {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase.from("queries").insert({
       session_id: sessionId,
       user_question: query,

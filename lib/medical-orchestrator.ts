@@ -47,13 +47,19 @@ interface TreatmentPlan {
 }
 
 // Initialize Mistral LLM with medical-specific configuration
-const mistralMedical = new ChatMistralAI({
-  apiKey: process.env.MISTRAL_API_KEY,
-  modelName: "mistral-large-latest",
-  temperature: 0.2, // Lower temperature for medical accuracy
-  maxTokens: 2048,
-  topP: 0.9,
-});
+let mistralMedical: any;
+function getMistralClient() {
+  if (!mistralMedical) {
+    mistralMedical = new ChatMistralAI({
+      apiKey: process.env.MISTRAL_API_KEY,
+      modelName: "mistral-large-latest",
+      temperature: 0.2, // Lower temperature for medical accuracy
+      maxTokens: 2048,
+      topP: 0.9,
+    });
+  }
+  return mistralMedical;
+}
 
 /**
  * Step 1: Query Classification and Routing
@@ -93,7 +99,7 @@ Respond in JSON format:
 
   const chain = RunnableSequence.from([
     classificationPrompt,
-    mistralMedical,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -134,7 +140,7 @@ Respond in JSON format:
 
   const chain = RunnableSequence.from([
     extractionPrompt,
-    mistralMedical,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -232,7 +238,7 @@ Respond in JSON format:
 
   const chain = RunnableSequence.from([
     diagnosisPrompt,
-    mistralMedical,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -287,7 +293,7 @@ Respond in JSON format:
 
   const chain = RunnableSequence.from([
     treatmentPrompt,
-    mistralMedical,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
@@ -337,7 +343,7 @@ Respond in JSON format:
 
   const chain = RunnableSequence.from([
     safetyPrompt,
-    mistralMedical,
+    getMistralClient(),
     new StringOutputParser(),
   ]);
 
