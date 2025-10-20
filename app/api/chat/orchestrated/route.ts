@@ -3,13 +3,10 @@ import {
   orchestrateMedicalQuery,
   getFallbackResponse,
 } from "@/lib/medical-orchestrator";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const supabase = getSupabase();
   try {
     const { message, sessionId, conversationId } = await request.json();
 
