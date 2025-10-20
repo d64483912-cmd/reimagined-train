@@ -1,9 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+let supabase: any;
+
+function getSupabaseClient() {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }
+  return supabase;
+}
 
 export interface ChatMessage {
   id: string;
@@ -63,6 +70,7 @@ export async function getConversationHistory(
   conversationId: string
 ): Promise<ChatMessage[]> {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("messages")
       .select("*")
@@ -82,6 +90,7 @@ export async function getConversationHistory(
  */
 export async function createConversation(userId: string) {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("user_sessions")
       .insert({
@@ -104,6 +113,7 @@ export async function createConversation(userId: string) {
  */
 export async function getUserPreferences(userId: string) {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("user_preferences")
       .select("*")
@@ -126,6 +136,7 @@ export async function updateUserPreferences(
   preferences: any
 ) {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("user_preferences")
       .upsert({
@@ -152,6 +163,7 @@ export async function saveMedicalContext(
   context: any
 ) {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("medical_context_summary")
       .upsert({
@@ -179,6 +191,7 @@ export async function saveMedicalContext(
  */
 export async function getMedicalContext(sessionId: string) {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("medical_context_summary")
       .select("*")
