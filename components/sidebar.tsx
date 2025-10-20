@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 
-export function Sidebar() {
+export default function Sidebar() {
   const { theme, setTheme } = useTheme()
   const [open, setOpen] = useState(false)
 

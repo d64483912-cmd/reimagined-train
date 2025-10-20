@@ -1,171 +1,253 @@
-"use client"
+"use client";
 
-import { useState, useRef, useEffect } from "react"
-import { motion, AnimatePresence } from "motion/react"
-import { HelpCircle } from "lucide-react"
-import { Sidebar } from "@/components/sidebar"
-import { ChatInput } from "@/components/chat-input"
-import { MarkdownRenderer } from "@/components/markdown-renderer"
-import { SplashScreen } from "@/components/splash-screen"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect, useRef } from "react";
+import { v4 as uuidv4 } from "uuid";
+import Sidebar from "@/components/sidebar";
+import ChatInput from "@/components/chat-input";
+import MarkdownRenderer from "@/components/markdown-renderer";
+import SplashScreen from "@/components/splash-screen";
+import { useTheme } from "next-themes";
+import { sendMessage, getConversationHistory, getMedicalContext } from "@/lib/chat-service";
+import { motion, AnimatePresence } from "motion/react";
 
 interface Message {
-  id: string
-  role: "user" | "assistant"
-  content: string
+  id: string;
+  type: "user" | "assistant";
+  content: string;
+  sources?: any[];
+  confidence?: number;
+  timestamp: string;
 }
 
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [showSplash, setShowSplash] = useState(true)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [showSplash, setShowSplash] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
+  const [conversationId, setConversationId] = useState<string>("");
+  const [medicalContext, setMedicalContext] = useState<any>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { theme } = useTheme();
+
+  // Initialize session on mount
+  useEffect(() => {
+    const initializeSession = async () => {
+      const newSessionId = uuidv4();
+      const newConversationId = uuidv4();
+      
+      setSessionId(newSessionId);
+      setConversationId(newConversationId);
+    };
+
+    initializeSession();
+  }, []);
+
+  // Load conversation history
+  useEffect(() => {
+    if (conversationId) {
+      loadConversationHistory();
+    }
+  }, [conversationId]);
+
+  // Load medical context
+  useEffect(() => {
+    if (sessionId) {
+      loadMedicalContext();
+    }
+  }, [sessionId]);
+
+  const loadConversationHistory = async () => {
+    try {
+      const history = await getConversationHistory(conversationId);
+      const formattedMessages = history.map((msg: any) => ({
+        id: msg.id,
+        type: msg.type,
+        content: msg.content,
+        sources: msg.sources,
+        confidence: msg.confidence_score,
+        timestamp: msg.created_at,
+      }));
+      setMessages(formattedMessages);
+    } catch (error) {
+      console.error("Error loading conversation history:", error);
+    }
+  };
+
+  const loadMedicalContext = async () => {
+    try {
+      const context = await getMedicalContext(sessionId);
+      setMedicalContext(context);
+    } catch (error) {
+      console.error("Error loading medical context:", error);
+    }
+  };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
   const handleSendMessage = async (message: string) => {
+    if (!message.trim() || !sessionId || !conversationId) return;
+
+    // Add user message to UI
     const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
+      id: uuidv4(),
+      type: "user",
       content: message,
-    }
+      timestamp: new Date().toISOString(),
+    };
 
-    setMessages((prev) => [...prev, userMessage])
-    setIsLoading(true)
+    setMessages((prev) => [...prev, userMessage]);
+    setLoading(true);
 
-    // TODO: Replace with actual Supabase API call
-    // For now, simulate a response
-    setTimeout(() => {
+    try {
+      // Send to RAG pipeline
+      const response = await sendMessage(message, sessionId, conversationId);
+
+      // Add assistant response to UI
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `Thank you for your question about pediatrics. This is a placeholder response. Once you provide Supabase credentials, I'll integrate the actual Nelson-GPT API.\n\n**Your question:** ${message}\n\n---\n\n### Response\n\nThis is a **markdown-enabled** response that supports:\n\n- **Bold text**\n- *Italic text*\n- \`inline code\`\n- [Links](https://example.com)\n\n#### Code Example\n\n\`\`\`python\ndef pediatric_assessment():\n    return "Nelson-GPT is ready"\n\`\`\`\n\n#### Table Example\n\n| Symptom | Age Group | Severity |\n|---------|-----------|----------|\n| Fever | 0-2 years | High |\n| Cough | 2-5 years | Medium |\n| Rash | 5+ years | Low |`,
-      }
+        id: uuidv4(),
+        type: "assistant",
+        content: response.message,
+        sources: response.sources,
+        confidence: response.confidence,
+        timestamp: new Date().toISOString(),
+      };
 
-      setMessages((prev) => [...prev, assistantMessage])
-      setIsLoading(false)
-    }, 1500)
-  }
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Update medical context if available
+      if (response.diagnosis || response.treatment) {
+        setMedicalContext({
+          ...medicalContext,
+          lastDiagnosis: response.diagnosis,
+          lastTreatment: response.treatment,
+        });
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      
+      // Add error message
+      const errorMessage: Message = {
+        id: uuidv4(),
+        type: "assistant",
+        content: "Sorry, I encountered an error processing your query. Please try again.",
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-slate-950">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
-          <Sidebar />
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+    <div className={`flex h-screen ${theme === "dark" ? "bg-slate-950" : "bg-white"}`}>
+      {/* Sidebar */}
+      <Sidebar />
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className={`border-b ${theme === "dark" ? "border-slate-800 bg-slate-900" : "border-gray-200 bg-gray-50"} px-4 py-3`}>
+          <h1 className={`text-lg font-semibold ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
             Nelson-GPT
           </h1>
-          <div className="w-10" />
+          <p className={`text-xs ${theme === "dark" ? "text-slate-400" : "text-gray-500"}`}>
+            Smart Pediatric Assistant
+          </p>
         </div>
-      </header>
 
-      {/* Chat Area */}
-      <main className="flex-1 overflow-y-auto pb-32">
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full py-12">
-              {/* Mascot */}
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className="mb-8"
-              >
-                <div className="w-20 h-20 bg-slate-900 dark:bg-slate-100 rounded-full flex items-center justify-center">
-                  <div className="flex gap-2">
-                    <div className="w-2 h-2 bg-white dark:bg-slate-900 rounded-full" />
-                    <div className="w-2 h-2 bg-white dark:bg-slate-900 rounded-full" />
+        {/* Messages Container */}
+        <div className={`flex-1 overflow-y-auto ${theme === "dark" ? "bg-slate-950" : "bg-white"}`}>
+          <div className="max-w-4xl mx-auto w-full px-4 py-6 space-y-4">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className={`text-5xl mb-4 ${theme === "dark" ? "text-slate-600" : "text-gray-300"}`}>
+                    👨‍⚕️
                   </div>
+                  <h2 className={`text-2xl font-bold mb-2 ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
+                    Welcome to Nelson-GPT
+                  </h2>
+                  <p className={`${theme === "dark" ? "text-slate-400" : "text-gray-600"}`}>
+                    Ask me anything about pediatric medicine
+                  </p>
                 </div>
-              </motion.div>
-
-              {/* Welcome Message */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="text-center"
-              >
-                <p className="text-lg text-slate-600 dark:text-slate-300 mb-2">
-                  Looking for something specific?
-                </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Ask me anything about pediatrics
-                </p>
-              </motion.div>
-            </div>
-          ) : (
-            <div className="space-y-6">
+              </div>
+            ) : (
               <AnimatePresence>
                 {messages.map((msg) => (
                   <motion.div
                     key={msg.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.3 }}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-2xl rounded-2xl px-6 py-4 ${
-                        msg.role === "user"
-                          ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900"
-                          : "bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white"
+                      className={`max-w-2xl rounded-lg px-4 py-3 ${
+                        msg.type === "user"
+                          ? theme === "dark"
+                            ? "bg-blue-600 text-white"
+                            : "bg-blue-500 text-white"
+                          : theme === "dark"
+                          ? "bg-slate-800 text-slate-100"
+                          : "bg-gray-100 text-gray-900"
                       }`}
                     >
-                      {msg.role === "assistant" ? (
+                      {msg.type === "assistant" ? (
                         <MarkdownRenderer content={msg.content} />
                       ) : (
-                        <p className="text-base">{msg.content}</p>
+                        <p className="text-sm">{msg.content}</p>
+                      )}
+                      {msg.sources && msg.sources.length > 0 && (
+                        <div className={`mt-3 pt-3 border-t ${theme === "dark" ? "border-slate-700" : "border-gray-300"}`}>
+                          <p className="text-xs font-semibold mb-2">Sources:</p>
+                          <ul className="text-xs space-y-1">
+                            {msg.sources.map((source: any, i: number) => (
+                              <li key={i} className="opacity-80">
+                                • {source.title} (p. {source.page})
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                     </div>
                   </motion.div>
                 ))}
               </AnimatePresence>
-
-              {isLoading && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-start"
-                >
-                  <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl px-6 py-4">
-                    <div className="flex gap-2">
-                      <div className="w-2 h-2 bg-slate-400 dark:bg-slate-600 rounded-full animate-bounce" />
-                      <div className="w-2 h-2 bg-slate-400 dark:bg-slate-600 rounded-full animate-bounce delay-100" />
-                      <div className="w-2 h-2 bg-slate-400 dark:bg-slate-600 rounded-full animate-bounce delay-200" />
-                    </div>
+            )}
+            {loading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex justify-start"
+              >
+                <div className={`rounded-lg px-4 py-3 ${theme === "dark" ? "bg-slate-800" : "bg-gray-100"}`}>
+                  <div className="flex space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${theme === "dark" ? "bg-slate-400" : "bg-gray-400"} animate-bounce`} />
+                    <div className={`w-2 h-2 rounded-full ${theme === "dark" ? "bg-slate-400" : "bg-gray-400"} animate-bounce delay-100`} />
+                    <div className={`w-2 h-2 rounded-full ${theme === "dark" ? "bg-slate-400" : "bg-gray-400"} animate-bounce delay-200`} />
                   </div>
-                </motion.div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+                </div>
+              </motion.div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
-      </main>
 
-      {/* Help Button */}
-      <Button
-        variant="outline"
-        size="icon"
-        className="fixed bottom-32 right-6 rounded-full h-10 w-10 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-      >
-        <HelpCircle className="h-5 w-5" />
-      </Button>
-
-      {/* Chat Input */}
-      <ChatInput onSend={handleSendMessage} isLoading={isLoading} />
+        {/* Chat Input */}
+        <ChatInput onSend={handleSendMessage} isLoading={loading} />
+      </div>
     </div>
-  )
+  );
 }

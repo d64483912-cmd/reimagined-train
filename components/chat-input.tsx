@@ -10,7 +10,7 @@ interface ChatInputProps {
   isLoading?: boolean
 }
 
-export function ChatInput({ onSend, isLoading = false }: ChatInputProps) {
+export default function ChatInput({ onSend, isLoading = false }: ChatInputProps) {
   const [message, setMessage] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
